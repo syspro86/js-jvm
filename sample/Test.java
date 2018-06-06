@@ -1,5 +1,9 @@
 public class Test {
 
+    private int a;
+    private static long b;
+    private String c;
+
     static class A implements Iterable<String> {
         @Override
         public java.util.Iterator<String> iterator() {return null;}
@@ -10,13 +14,23 @@ public class Test {
     }
 
     public static void main(String[] args) {
-        System.out.println("Hello, world!");
+        //System.out.println("Hello, world!");
+        long e = 0;
 
         if (add(10, 20L) == 30D) {
-            System.out.println(30f);
+            //System.out.println(30f);
+            e = 10;
         }
 
         Iterable<String> i = new Test.A();
         i.iterator();
+
+        System.out.println(e + e);
     }
+}
+
+class Test2 {
+    public void a() {}
+    private int b() {return 1;}
+    protected static String c(Object o) {return "";}
 }

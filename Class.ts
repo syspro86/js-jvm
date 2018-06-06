@@ -1,6 +1,22 @@
 
 export class Class {
+    public class_name: string;
+    public methods: { [index: string]: ClassMethod } = {}
+    public fields: { [index: string]: ClassField } = {}
+    public constant_pool: ConstantPoolInfo[]
+}
 
+export class ClassMethod {
+    public code: Buffer
+    max_locals: number;
+    max_stack: number;
+    exception_table: any[];
+    args_size: number;
+}
+
+export class ClassField {
+    public type: Class
+    static_value: any
 }
 
 // JVM Class spec
@@ -9,19 +25,17 @@ export class Class {
 export class ClassFile {
     minor_version: number;
     major_version: number;
-    constant_pool_count: number;
     constant_pool: ConstantPoolInfo[];
     access_flags: object;
     this_class: number;
     super_class: number;
     interfaces_count: number;
     interfaces: number[];
-    fields_count: number;
     fields: MemberInfo[];
-    methods_count: number;
     method_info: MemberInfo[];
-    attributes_count: number;
     attributes: AttributeInfo[];
+
+    this_class_name: string;
 }
 
 export class ConstantPoolInfo {
@@ -50,17 +64,47 @@ If the value is 8 (REF_newInvokeSpecial), the name of the method represented by 
 }
 
 export class MemberInfo {
-    access_flags: number;
+    access_flags: object;
     name_index: number;
+    name: string;
     descriptor_index: number;
-    attributes_count: number;
+    descriptor: string;
     attributes: AttributeInfo[];
 }
 
 export class AttributeInfo {
     attribute_name_index: number;
-    attribute_length: number;
-    info: Buffer;
+    attribute_name: string;
+    attribute_value: string;
+    code_info: CodeInfo;
+    line_number_table_info: LineNumberTableInfo[];
+    stack_map_table_info: StackMapTableInfo[];
+    inner_classes_info: InnerClassInfo[];
+}
+
+export class CodeInfo {
+    max_stack: number;
+    max_locals: number;
+    code_length: number;
+    code: Buffer;
+    exception_table: any[];
+    attributes: AttributeInfo[];
+}
+
+export class LineNumberTableInfo {
+    start_pc: number;
+    line_number: number;
+}
+
+export class StackMapTableInfo {
+
+}
+
+export class InnerClassInfo {
+    inner_class_info_index: number;
+    outer_class_info_index: number;
+    inner_name_index: number;
+    inner_class_access_flags: number;
 }
 
 export const ConstantPoolTagNames: string[] = [

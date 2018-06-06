@@ -1,4 +1,4 @@
-var { ClassLoader } = require('./ClassLoader')
+import { JVM } from './JVM';
 
-var cl = new ClassLoader()
-cl.loadClass('sample/Test.class')
+var jvm = new JVM()
+jvm.start('Test')
