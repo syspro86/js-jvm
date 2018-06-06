@@ -1,0 +1,22 @@
+{
+  "name": "js-jvm",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/syspro86/js-jvm.git"
+  },
+  "author": "syspro86",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/syspro86/js-jvm/issues"
+  },
+  "homepage": "https://github.com/syspro86/js-jvm#readme",
+  "devDependencies": {
+    "@types/node": "^10.3.1"
+  }
+}
