@@ -1,5 +1,7 @@
 public class Test {
 
+    private static int d = 10;
+
     private int a;
     private static long b;
     private String c;

@@ -1,4 +1,4 @@
-import { Class, ClassFile, ConstantPoolTagNames, ClassMethod } from "./Class"
+import { Class, ClassFile, ConstantPoolTagNames, ClassMethod, ClassField } from "./Class"
 import { ClassReader } from "./ClassReader"
 import * as fs from "fs";
 import * as path from "path"
@@ -11,17 +11,20 @@ export class ClassLoader {
     }
 
     public loadClass(className: string): {clazz: Class, cached: boolean} {
+        className = className.replace(/\./g, '/')
         if (className in this.loadedClasses) {
             return { clazz: this.loadedClasses[className], cached: true }
         } else {
-            var filepath = className.replace(/\./g, '/') + '.class'
+            var filepath = className + '.class'
 
             for (let classpath of this.classpath) {
                 var stat: fs.Stats = fs.statSync(classpath)
                 if (stat.isDirectory()) {
                     var classfile = path.join(classpath, filepath)
                     if (fs.existsSync(classfile)) {
-                        return { clazz: this.loadClassFile(classfile), cached: false }
+                        var clazz = this.loadClassFile(classfile)
+                        this.loadedClasses[className] = clazz
+                        return { clazz: clazz, cached: false }
                     }
                 }
             }
@@ -41,31 +44,40 @@ export class ClassLoader {
         reader = new ClassReader(buffer)
 
         var classFile: ClassFile = reader.read()
-        this.javap(classFile)
 
         var clazz: Class = new Class()
         clazz.class_name = classFile.this_class_name
         clazz.constant_pool = classFile.constant_pool
-        classFile.method_info.forEach(method => {
+        classFile.methods.forEach(method => {
             var method_name = method.name + method.descriptor
             var cm = new ClassMethod()
+            cm.signature = method_name
             method.attributes.forEach(attr => {
                 if (attr.attribute_name == 'Code') {
                     cm.code = attr.code_info.code
                     cm.max_locals = attr.code_info.max_locals
                     cm.max_stack = attr.code_info.max_stack
                     cm.exception_table = attr.code_info.exception_table
-                    cm.args_size = method.descriptor.replace(/\(|\).+$/g, '').replace(/\[/g, '').replace(/L[a-zA-Z0-9/$]+;/g, 'V').length
+                    var str = method.descriptor.replace(/\(|\).+$/g, '').replace(/\[/g, '').replace(/L[a-zA-Z0-9/$]+;/g, 'V')
+                    cm.args_size = str.length + str.replace(/[^JD]/g, '').length
                 }
             })
             clazz.methods[method_name] = cm
+        })
+        classFile.fields.forEach(field => {
+            var field_name = field.name
+            var cf = new ClassField()
+            field.attributes.forEach(attr => {
+
+            })
+            clazz.fields[field_name] = cf
         })
         
         return clazz
     }
 
-    private javap(clazz: ClassFile): void {
-        console.log('this class ' + clazz.this_class_name)
+    public javap(clazz: Class): void {
+        console.log('this class ' + clazz.class_name)
 
         function leftPad(str: string, len: number): string {
             while (str.length < len) {

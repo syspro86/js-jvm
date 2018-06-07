@@ -7,6 +7,7 @@ export class Class {
 }
 
 export class ClassMethod {
+    signature: string;
     public code: Buffer
     max_locals: number;
     max_stack: number;
@@ -32,7 +33,7 @@ export class ClassFile {
     interfaces_count: number;
     interfaces: number[];
     fields: MemberInfo[];
-    method_info: MemberInfo[];
+    methods: MemberInfo[];
     attributes: AttributeInfo[];
 
     this_class_name: string;

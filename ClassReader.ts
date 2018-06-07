@@ -27,7 +27,7 @@ export class ClassReader {
         var fields_count = this.reader.readU2()
         this.classFile.fields = this.readMembers(fields_count)
         var methods_count = this.reader.readU2()
-        this.classFile.method_info = this.readMembers(methods_count)
+        this.classFile.methods = this.readMembers(methods_count)
         var attributes_count = this.reader.readU2()
         this.classFile.attributes = this.readAttributes(this.reader, attributes_count);
 
