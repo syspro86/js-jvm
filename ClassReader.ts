@@ -1,4 +1,4 @@
-import { ClassFile, ConstantPoolInfo, MemberInfo, AttributeInfo, CodeInfo, LineNumberTableInfo, InnerClassInfo, StackMapTableInfo } from './Class';
+import { ClassFile, ConstantPoolInfo, MemberInfo, AttributeInfo, CodeInfo, LineNumberTableInfo, InnerClassInfo, StackMapTableInfo, AccessFlagsType } from './Class';
 
 export class ClassReader {
     private reader: BufferReader
@@ -212,25 +212,25 @@ export class ClassReader {
         return buffer.toString("utf-8")
     }
 
-    private parseAccessFlags(flags: number): object {
-        return {
-            acc_public: ((flags & 0x0001) != 0),
-            acc_private: ((flags & 0x0002) != 0),
-            acc_protected: ((flags & 0x0004) != 0),
-            acc_static: ((flags & 0x0008) != 0),
-            acc_final: ((flags & 0x0010) != 0),
-            acc_super: ((flags & 0x0020) != 0),
-            acc_synchronized: ((flags & 0x0020) != 0),
-            acc_bridge: ((flags & 0x0040) != 0),
-            acc_varargs: ((flags & 0x0080) != 0),
-            acc_native: ((flags & 0x0100) != 0),
-            acc_interface: ((flags & 0x0200) != 0),
-            acc_abstract: ((flags & 0x0400) != 0),
-            acc_strict: ((flags & 0x0800) != 0),
-            acc_synthetic: ((flags & 0x1000) != 0),
-            acc_annotation: ((flags & 0x2000) != 0),
-            acc_enum: ((flags & 0x4000) != 0)
-        }
+    private parseAccessFlags(flags: number): AccessFlagsType {
+        var af = new AccessFlagsType()
+        af.acc_public = ((flags & 0x0001) != 0)
+        af.acc_private = ((flags & 0x0002) != 0)
+        af.acc_protected = ((flags & 0x0004) != 0)
+        af.acc_static = ((flags & 0x0008) != 0)
+        af.acc_final = ((flags & 0x0010) != 0)
+        af.acc_super = ((flags & 0x0020) != 0)
+        af.acc_synchronized = ((flags & 0x0020) != 0)
+        af.acc_bridge = ((flags & 0x0040) != 0)
+        af.acc_varargs = ((flags & 0x0080) != 0)
+        af.acc_native = ((flags & 0x0100) != 0)
+        af.acc_interface = ((flags & 0x0200) != 0)
+        af.acc_abstract = ((flags & 0x0400) != 0)
+        af.acc_strict = ((flags & 0x0800) != 0)
+        af.acc_synthetic = ((flags & 0x1000) != 0)
+        af.acc_annotation = ((flags & 0x2000) != 0)
+        af.acc_enum = ((flags & 0x4000) != 0)
+        return af
     }
 }
 

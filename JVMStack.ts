@@ -1,3 +1,14 @@
+import { ClassMethod, Class } from "./Class";
+
+export class JVMStackFrame {
+    var_stack: JVMStack
+    operand_stack: JVMStack
+    code: Buffer = null
+    pc: number = 0
+    sp: number = 0
+    clazz: Class = null
+    method: ClassMethod = null
+}
 
 export class JVMStack {
     private buffer: Buffer
@@ -22,6 +33,15 @@ export class JVMStack {
             this.offset += 4
         } else {
             this.buffer.writeInt32BE(val, index * 4)
+        }
+    }
+
+    public writeUInt(val: number, index?: number): void {
+        if (typeof index === 'undefined') {
+            this.buffer.writeUInt32BE(val, this.offset)
+            this.offset += 4
+        } else {
+            this.buffer.writeUInt32BE(val, index * 4)
         }
     }
 
@@ -62,6 +82,16 @@ export class JVMStack {
             return val
         } else {
             return this.buffer.readInt32BE(index * 4)
+        }
+    }
+
+    public readUInt(index?: number): number {
+        if (typeof index === 'undefined') {
+            var val = this.buffer.readUInt32BE(this.offset - 4)
+            this.offset -= 4
+            return val
+        } else {
+            return this.buffer.readUInt32BE(index * 4)
         }
     }
 

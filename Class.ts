@@ -13,6 +13,7 @@ export class ClassMethod {
     max_stack: number;
     exception_table: any[];
     args_size: number;
+    access_flags: AccessFlagsType;
 }
 
 export class ClassField {
@@ -27,7 +28,7 @@ export class ClassFile {
     minor_version: number;
     major_version: number;
     constant_pool: ConstantPoolInfo[];
-    access_flags: object;
+    access_flags: AccessFlagsType;
     this_class: number;
     super_class: number;
     interfaces_count: number;
@@ -65,7 +66,7 @@ If the value is 8 (REF_newInvokeSpecial), the name of the method represented by 
 }
 
 export class MemberInfo {
-    access_flags: object;
+    access_flags: AccessFlagsType;
     name_index: number;
     name: string;
     descriptor_index: number;
@@ -106,6 +107,25 @@ export class InnerClassInfo {
     outer_class_info_index: number;
     inner_name_index: number;
     inner_class_access_flags: number;
+}
+
+export class AccessFlagsType {
+    acc_public: boolean
+    acc_private: boolean
+    acc_protected: boolean
+    acc_static: boolean
+    acc_final: boolean
+    acc_super: boolean
+    acc_synchronized: boolean
+    acc_bridge: boolean
+    acc_varargs: boolean
+    acc_native: boolean
+    acc_interface: boolean
+    acc_abstract: boolean
+    acc_strict: boolean
+    acc_synthetic: boolean
+    acc_annotation: boolean
+    acc_enum: boolean
 }
 
 export const ConstantPoolTagNames: string[] = [

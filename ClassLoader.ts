@@ -52,6 +52,7 @@ export class ClassLoader {
             var method_name = method.name + method.descriptor
             var cm = new ClassMethod()
             cm.signature = method_name
+            cm.access_flags = method.access_flags
             method.attributes.forEach(attr => {
                 if (attr.attribute_name == 'Code') {
                     cm.code = attr.code_info.code
@@ -60,6 +61,9 @@ export class ClassLoader {
                     cm.exception_table = attr.code_info.exception_table
                     var str = method.descriptor.replace(/\(|\).+$/g, '').replace(/\[/g, '').replace(/L[a-zA-Z0-9/$]+;/g, 'V')
                     cm.args_size = str.length + str.replace(/[^JD]/g, '').length
+                    if (!method.access_flags.acc_static) {
+                        cm.args_size++
+                    }
                 }
             })
             clazz.methods[method_name] = cm
