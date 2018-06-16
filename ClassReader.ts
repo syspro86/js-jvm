@@ -1,4 +1,5 @@
 import { ClassFile, ConstantPoolInfo, MemberInfo, AttributeInfo, CodeInfo, LineNumberTableInfo, InnerClassInfo, StackMapTableInfo, AccessFlagsType } from './Class';
+import { JVM } from './JVM';
 
 export class ClassReader {
     private reader: BufferReader
@@ -72,7 +73,9 @@ export class ClassReader {
             } else if (array[i].attribute_name == 'InnerClasses') {
                 array[i].inner_classes_info = this.readInnerClassesAttribute(info)
             } else {
-                console.log('unknown attribute ' + array[i].attribute_name)
+                if (JVM.debug) {
+                    console.log('unknown attribute ' + array[i].attribute_name)
+                }
             }
         }
         return array

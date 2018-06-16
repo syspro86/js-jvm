@@ -1,35 +1,94 @@
 import { Class, ClassFile, ConstantPoolTagNames, ClassMethod, ClassField } from "./Class"
 import { ClassReader } from "./ClassReader"
+import * as JSZip from "jszip"
 import * as fs from "fs";
 import * as path from "path"
 
 export class ClassLoader {
-    private loadedClasses: { [index: string]: Class } = {};
-    private classpath: string[] = ['sample'];
+    static loadedClasses: { [index: string]: Class } = {};
 
-    constructor() {
+    public async loadClass(className: string): Promise<{clazz: Class, cached: boolean}> {
+        className = className.replace(/\./g, '/')
+        if (className in ClassLoader.loadedClasses) {
+            return { clazz: ClassLoader.loadedClasses[className], cached: true }
+        } else {
+            var clazz = await this.loadClassImpl(className)
+            if (clazz.clazz != null) {
+                this.registerClass(className, clazz.clazz)
+            }
+            return clazz
+        }
     }
 
-    public loadClass(className: string): {clazz: Class, cached: boolean} {
-        className = className.replace(/\./g, '/')
-        if (className in this.loadedClasses) {
-            return { clazz: this.loadedClasses[className], cached: true }
-        } else {
-            var filepath = className + '.class'
+    public async loadClassImpl(className: string): Promise<{clazz: Class, cached: boolean}> {
+        return {
+            clazz: null,
+            cached: false
+        }
+    }
 
-            for (let classpath of this.classpath) {
-                var stat: fs.Stats = fs.statSync(classpath)
-                if (stat.isDirectory()) {
-                    var classfile = path.join(classpath, filepath)
-                    if (fs.existsSync(classfile)) {
-                        var clazz = this.loadClassFile(classfile)
-                        this.loadedClasses[className] = clazz
-                        return { clazz: clazz, cached: false }
+    private registerClass(className: string, clazz: Class): void {
+        ClassLoader.loadedClasses[className] = clazz
+    }
+}
+
+export class CompositeClassLoader extends ClassLoader {
+    constructor(private classLoaders: ClassLoader[]) {
+        super()
+    }
+
+    public add(classLoader: ClassLoader): void {
+        this.classLoaders.push(classLoader)
+    }
+
+    public async loadClassImpl(className: string): Promise<{clazz: Class, cached: boolean}> {
+        for (let classLoader of this.classLoaders) {
+            var ret = await classLoader.loadClassImpl(className)
+            if (ret.clazz != null) {
+                return ret
+            }
+        }
+        return {
+            clazz: null,
+            cached: false
+        }
+    }
+}
+
+export class DefaultClassLoader extends ClassLoader {
+    constructor(private classpath: string[]) {
+        super()
+    }
+
+    public async loadClassImpl(className: string): Promise<{clazz: Class, cached: boolean}> {
+        var filepath = className + '.class'
+
+        for (let classpath of this.classpath) {
+            if (!fs.existsSync(classpath)) {
+                continue
+            }
+            var stat: fs.Stats = fs.statSync(classpath)
+            if (stat.isDirectory()) {
+                var classfile = path.join(classpath, filepath)
+                if (fs.existsSync(classfile)) {
+                    var clazz = this.loadClassFile(classfile)
+                    return { clazz: clazz, cached: false }
+                }
+            } else if (stat.isFile()) {
+                if (classpath.endsWith('.jar')) {
+                    buffer = fs.readFileSync(classpath)
+                    var jszip = await JSZip.loadAsync(buffer)
+                    var jszobj = jszip.file(filepath)
+                    if (jszobj == null) {
+                        continue
                     }
+                    var buffer = await jszobj.async('nodebuffer')
+                    var clazz = this.loadClassFile(buffer)
+                    return { clazz: clazz, cached: false }
                 }
             }
-            return { clazz: null, cached: false }
         }
+        return { clazz: null, cached: false }
     }
 
     public loadClassFile(bufferOrPath: Buffer | string): Class {

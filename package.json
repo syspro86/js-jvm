@@ -17,6 +17,10 @@
   },
   "homepage": "https://github.com/syspro86/js-jvm#readme",
   "devDependencies": {
-    "@types/node": "^10.3.1"
+    "@types/node": "^10.3.1",
+    "@types/jszip": "^3.1.4"
+  },
+  "dependencies": {
+    "jszip": "^3.1.5"
   }
 }

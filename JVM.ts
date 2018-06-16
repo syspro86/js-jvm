@@ -1,21 +1,65 @@
 import { Class, ClassMethod, ConstantPoolInfo } from "./Class";
-import { ClassLoader } from "./ClassLoader";
+import { ClassLoader, CompositeClassLoader, DefaultClassLoader } from "./ClassLoader";
+import { BootClassLoader } from "./BootClassLoader";
 import { JVMStack, JVMStackFrame } from "./JVMStack";
 import * as util from "util"
 
-export class JVM {
-    private classLoader: ClassLoader = new ClassLoader();
-    private frame: JVMStackFrame[] = []
-    private heap: JVMObjectRef[] = []
+function rpad(str, len) {
+    if (str == null) str = ''
+    if (str.length < len) {
+        str += ' '.repeat(len - str.length)
+    }
+    return str
+}
 
-    public start(mainClass: string): void {
+export class JVM {
+    public static active: JVM
+    public static debug: boolean = false
+    private classLoader: ClassLoader = new CompositeClassLoader([
+        new BootClassLoader(),
+        new DefaultClassLoader(['sample'])
+    ]);
+    private frame: JVMStackFrame[] = []
+    public heap: JVMObjectRef[] = [
+        new JVMObjectRef(null)
+    ]
+
+    constructor() {
+        JVM.active = this
+    }
+
+    public async start(mainClass: string): Promise<void> {
         this.initFrame(mainClass)
         // https://en.wikipedia.org/wiki/Java_bytecode_instruction_listings
         while (true) {
-            var cur_frame: JVMStackFrame = this.frame[this.frame.length - 1]
-            var bytecode = cur_frame.code[cur_frame.pc]
-
             try {
+                var cur_frame: JVMStackFrame = this.frame[this.frame.length - 1]
+
+                // debug info
+                if (JVM.debug) {
+                    console.log(rpad(cur_frame.clazz.class_name, 20) + rpad(cur_frame.method.signature, 50) + cur_frame.pc)
+                    if (cur_frame.pc == 0) {
+                        console.log(cur_frame.code != null ? cur_frame.code : 'native')
+                    }
+                }
+
+                if (cur_frame.code_native != null) {
+                    var args = []
+                    for (var i = 0; i < cur_frame.method.args_size; i++) {
+                        args.push(cur_frame.var_stack.readUInt(i))
+                    }
+                    var ret = await cur_frame.method.code_native.apply(cur_frame.clazz, args)
+                    if (typeof ret == 'number') {
+                        cur_frame.operand_stack.writeInt(ret)
+                        this.code_ireturn(cur_frame)
+                    } else {
+                        this.code_return(cur_frame)
+                    }
+                    continue
+                }
+
+                var bytecode = cur_frame.code[cur_frame.pc]
+
                 switch (bytecode) {
                     case 0x01: // aconst_null
                         cur_frame.operand_stack.writeInt(0)
@@ -69,6 +113,21 @@ export class JVM {
                         this.code_lstore_n(cur_frame, bytecode - 0x3f)
                         break
 
+                    case 0x4b: // astore_0
+                    case 0x4c: // astore_1
+                    case 0x4d: // astore_2
+                    case 0x4e: // astore_3
+                        this.code_astore_n(cur_frame, bytecode - 0x4b)
+                        break
+
+                    case 0x57:
+                        this.code_pop(cur_frame)
+                        break
+
+                    case 0x58:
+                        this.code_pop2(cur_frame)
+                        break
+
                     case 0x59: // dup
                         this.code_dup(cur_frame)
                         break
@@ -118,8 +177,8 @@ export class JVM {
                         cur_frame.pc++
                         break
 
-                    case 0x97:
-                        cur_frame.operand_stack.writeInt(cur_frame.operand_stack.readDouble() == cur_frame.operand_stack.readDouble() ? 1 : 0)
+                    case 0x97: // dcmpl
+                        cur_frame.operand_stack.writeInt(cur_frame.operand_stack.readDouble() == cur_frame.operand_stack.readDouble() ? 0 : 1)
                         cur_frame.pc++
                         break
 
@@ -136,27 +195,38 @@ export class JVM {
                         break
 
                     case 0xb2:
-                        this.code_getstatic(cur_frame)
+                        await this.code_getstatic(cur_frame)
                         break
 
                     case 0xb3:
-                        this.code_putstatic(cur_frame)
+                        await this.code_putstatic(cur_frame)
+                        break
+
+                    case 0xb6:
+                        await this.code_invokevirtual(cur_frame)
                         break
 
                     case 0xb7:
-                        this.code_invokespecial(cur_frame)
+                        await this.code_invokespecial(cur_frame)
                         break
 
                     case 0xb8:
-                        this.code_invokestatic(cur_frame)
+                        await this.code_invokestatic(cur_frame)
+                        break
+
+                    case 0xb9:
+                        await this.code_invokeinterface(cur_frame)
                         break
 
                     case 0xbb: // new
-                        this.code_new(cur_frame)
+                        await this.code_new(cur_frame)
                         break
 
+                    case 0xca: // breakpoint
+                        return
+
                     default:
-                        throw new Error("Not implemented " + bytecode.toString(16) + " @ " + cur_frame.pc)
+                        throw new Error("Not implemented " + (typeof bytecode == 'number' ? bytecode.toString(16) : '?') + " @ " + cur_frame.pc)
                 }
             } catch (e) {
                 if (e instanceof ClassLoadException) {
@@ -180,32 +250,62 @@ export class JVM {
         })
     }
 
-    private new_frame(class_name: string, method_name: string): void {
+    private async new_frame(class_name: string, method_name: string): Promise<void> {
         var cur_frame: JVMStackFrame = this.frame[this.frame.length - 1]
         var new_frame: JVMStackFrame = new JVMStackFrame()
-        new_frame.clazz = this.get_class(class_name)
+        new_frame.clazz = await this.get_class(class_name)
         new_frame.method = new_frame.clazz.methods[method_name]
-        new_frame.code = new_frame.method.code
-        new_frame.operand_stack = new JVMStack(new_frame.method.max_stack * 4)
-        new_frame.var_stack = new JVMStack(new_frame.method.max_locals * 4)
-        for (var i = new_frame.method.args_size - 1; i >= 0; i--) {
-            new_frame.var_stack.writeInt(cur_frame.operand_stack.readInt(), i)
+
+        if (new_frame.method == null) {
+            throw new NoSuchMethodException(class_name + ' ' + method_name)
         }
-        this.frame.push(new_frame)
+
+        // if (new_frame.method.code != null) {
+            new_frame.code = new_frame.method.code
+            new_frame.code_native = new_frame.method.code_native
+            if (new_frame.code != null) {
+                new_frame.operand_stack = new JVMStack(new_frame.method.max_stack * 4)
+                new_frame.var_stack = new JVMStack(new_frame.method.max_locals * 4)
+            } else if (new_frame.code_native != null) {
+                new_frame.operand_stack = new JVMStack(8)
+                new_frame.var_stack = new JVMStack(new_frame.method.args_size * 4)
+            }
+            for (var i = new_frame.method.args_size - 1; i >= 0; i--) {
+                new_frame.var_stack.writeUInt(cur_frame.operand_stack.readUInt(), i)
+            }
+            this.frame.push(new_frame)
+        // } else if (new_frame.method.code_native != null) {
+            // var args = []
+            // for (var i = new_frame.method.args_size - 1; i >= 0; i--) {
+                // args.push(cur_frame.operand_stack.readUInt())
+            // }
+            // args.reverse()
+            // if (new_frame.method.access_flags.acc_static) {
+                // new_frame.method.code_native.call(null)
+            // } else {
+                // new_frame.method.code_native.call(null)
+            // }
+        // }
     }
 
-    private get_class(class_name: string): Class {
-        var { clazz, cached } = this.classLoader.loadClass(class_name)
+    public async get_class(class_name: string): Promise<Class> {
+        var { clazz, cached } = await this.classLoader.loadClass(class_name)
         if (clazz == null) {
             throw new ClassNotFoundException(class_name)
         }
         if (!cached) {
             if ("<clinit>()V" in clazz.methods) {
-                this.new_frame(class_name, "<clinit>()V")
+                await this.new_frame(class_name, "<clinit>()V")
                 throw new ClassLoadException()
             }
         }
         return clazz
+    }
+
+    public async alloc_instance(class_name: string): Promise<number> {
+        var obj = new JVMObjectRef(await this.get_class(class_name))
+        var id = this.heap.push(obj) - 1
+        return id
     }
 
     private code_bipush(cur_frame: JVMStackFrame): void {
@@ -245,7 +345,7 @@ export class JVM {
     }
 
     private code_aload_n(cur_frame: JVMStackFrame, local: number): void {
-        var val = cur_frame.var_stack.readInt(local)
+        var val = cur_frame.var_stack.readUInt(local)
         cur_frame.operand_stack.writeUInt(val)
         cur_frame.pc++
     }
@@ -253,6 +353,22 @@ export class JVM {
     private code_lstore_n(cur_frame: JVMStackFrame, local: number): void {
         var val = cur_frame.operand_stack.readLong()
         cur_frame.var_stack.writeLong(val, local)
+        cur_frame.pc++
+    }
+
+    private code_astore_n(cur_frame: JVMStackFrame, local: number): void {
+        var val = cur_frame.operand_stack.readUInt()
+        cur_frame.var_stack.writeUInt(val, local)
+        cur_frame.pc++
+    }
+
+    private code_pop(cur_frame: JVMStackFrame): void {
+        cur_frame.operand_stack.readUInt()
+        cur_frame.pc++
+    }
+
+    private code_pop2(cur_frame: JVMStackFrame): void {
+        cur_frame.operand_stack.readLong()
         cur_frame.pc++
     }
 
@@ -290,11 +406,18 @@ export class JVM {
         cur_frame.operand_stack.writeDouble(val)
     }
 
+    private code_ireturn(cur_frame: JVMStackFrame): void {
+        var val = cur_frame.operand_stack.readInt()
+        this.frame.pop()
+        cur_frame = this.frame[this.frame.length - 1]
+        cur_frame.operand_stack.writeInt(val)
+    }
+
     private code_return(cur_frame: JVMStackFrame): void {
         this.frame.pop()
     }
 
-    private code_getstatic(cur_frame: JVMStackFrame): void {
+    private async code_getstatic(cur_frame: JVMStackFrame): Promise<void> {
         var index1 = cur_frame.code[cur_frame.pc + 1]
         var index2 = cur_frame.code[cur_frame.pc + 2]
         var index = (index1 << 8) | index2
@@ -307,13 +430,13 @@ export class JVM {
         var name: string = cp[name_and_type.name_index].utf_val
         var type: string = cp[name_and_type.descriptor_index].utf_val
 
-        var clazz: Class = this.get_class(class_name)
+        var clazz: Class = await this.get_class(class_name)
         cur_frame.operand_stack.writeInt(clazz.fields[name].static_value)
 
         cur_frame.pc += 3
     }
 
-    private code_putstatic(cur_frame: JVMStackFrame): void {
+    private async code_putstatic(cur_frame: JVMStackFrame): Promise<void> {
         var index1 = cur_frame.code[cur_frame.pc + 1]
         var index2 = cur_frame.code[cur_frame.pc + 2]
         var index = (index1 << 8) | index2
@@ -326,7 +449,7 @@ export class JVM {
         var name: string = cp[name_and_type.name_index].utf_val
         var type: string = cp[name_and_type.descriptor_index].utf_val
 
-        var clazz: Class = this.get_class(class_name)
+        var clazz: Class = await this.get_class(class_name)
         if (type == 'J') {
             clazz.fields[name].static_value = cur_frame.operand_stack.readLong()
         } else {
@@ -336,7 +459,7 @@ export class JVM {
         cur_frame.pc += 3
     }
 
-    private code_invokespecial(cur_frame: JVMStackFrame): void {
+    private async code_invokevirtual(cur_frame: JVMStackFrame): Promise<void> {
         var index1 = cur_frame.code[cur_frame.pc + 1]
         var index2 = cur_frame.code[cur_frame.pc + 2]
         var index = (index1 << 8) | index2
@@ -349,12 +472,10 @@ export class JVM {
         var name: string = cp[name_and_type.name_index].utf_val
         var type: string = cp[name_and_type.descriptor_index].utf_val
 
-        this.new_frame(class_name, name + type)
-
+        await this.new_frame(class_name, name + type)
         cur_frame.pc += 3
     }
-
-    private code_invokestatic(cur_frame: JVMStackFrame): void {
+    private async code_invokespecial(cur_frame: JVMStackFrame): Promise<void> {
         var index1 = cur_frame.code[cur_frame.pc + 1]
         var index2 = cur_frame.code[cur_frame.pc + 2]
         var index = (index1 << 8) | index2
@@ -367,12 +488,47 @@ export class JVM {
         var name: string = cp[name_and_type.name_index].utf_val
         var type: string = cp[name_and_type.descriptor_index].utf_val
 
-        this.new_frame(class_name, name + type)
-
+        await this.new_frame(class_name, name + type)
         cur_frame.pc += 3
     }
 
-    private code_new(cur_frame: JVMStackFrame): void {
+    private async code_invokestatic(cur_frame: JVMStackFrame): Promise<void> {
+        var index1 = cur_frame.code[cur_frame.pc + 1]
+        var index2 = cur_frame.code[cur_frame.pc + 2]
+        var index = (index1 << 8) | index2
+
+        var cp: ConstantPoolInfo[] = cur_frame.clazz.constant_pool
+        var method_ref: ConstantPoolInfo = cp[index]
+        var class_info: ConstantPoolInfo = cp[method_ref.class_index]
+        var class_name: string = cp[class_info.name_index].utf_val
+        var name_and_type: ConstantPoolInfo = cp[method_ref.name_and_type_index]
+        var name: string = cp[name_and_type.name_index].utf_val
+        var type: string = cp[name_and_type.descriptor_index].utf_val
+
+        await this.new_frame(class_name, name + type)
+        cur_frame.pc += 3
+    }
+
+    private async code_invokeinterface(cur_frame: JVMStackFrame): Promise<void> {
+        var index1 = cur_frame.code[cur_frame.pc + 1]
+        var index2 = cur_frame.code[cur_frame.pc + 2]
+        var index3 = cur_frame.code[cur_frame.pc + 3]
+        var index4 = cur_frame.code[cur_frame.pc + 4]
+        var index = (index1 << 8) | index2
+
+        var cp: ConstantPoolInfo[] = cur_frame.clazz.constant_pool
+        var method_ref: ConstantPoolInfo = cp[index]
+        var class_info: ConstantPoolInfo = cp[method_ref.class_index]
+        var class_name: string = cp[class_info.name_index].utf_val
+        var name_and_type: ConstantPoolInfo = cp[method_ref.name_and_type_index]
+        var name: string = cp[name_and_type.name_index].utf_val
+        var type: string = cp[name_and_type.descriptor_index].utf_val
+
+        await this.new_frame(class_name, name + type)
+        cur_frame.pc += 5
+    }
+
+    private async code_new(cur_frame: JVMStackFrame): Promise<void> {
         var index1 = cur_frame.code[cur_frame.pc + 1]
         var index2 = cur_frame.code[cur_frame.pc + 2]
         var index = (index1 << 8) | index2
@@ -381,8 +537,7 @@ export class JVM {
         var class_ref: ConstantPoolInfo = cp[index]
         var class_name: string = cp[class_ref.name_index].utf_val
 
-        var obj = new JVMObjectRef(class_name)
-        var id = this.heap.push(obj) - 1
+        var id = await this.alloc_instance(class_name)
         cur_frame.operand_stack.writeInt(id)
 
         cur_frame.pc += 3
@@ -403,7 +558,7 @@ export class JVM {
 const ClassNotFoundException = function (message?) {
     Error.captureStackTrace(this, this.constructor)
     this.name = this.constructor.name
-    this.message = 'Class Not Found ' + this.constructor.message
+    this.message = 'Class Not Found ' + message
 }
 util.inherits(ClassNotFoundException, Error)
 
@@ -413,6 +568,15 @@ const ClassLoadException = function () {
     this.name = this.constructor.name
 }
 util.inherits(ClassLoadException, Error)
+
+// stop current instruction and call <clinit> method
+const NoSuchMethodException = function (message?) {
+    Error.captureStackTrace(this, this.constructor)
+    this.name = this.constructor.name
+    this.message = 'No Such Method ' + message
+}
+util.inherits(NoSuchMethodException, Error)
+
 
 class BootClass extends Class {
     /*
@@ -425,7 +589,7 @@ class BootClass extends Class {
     constructor(public main_class: string) {
         super()
 
-        this.class_name = '$JVM$'
+        this.class_name = '$VM$'
         this.constant_pool = new Array<ConstantPoolInfo>(7)
         this.constant_pool[1] = new ConstantPoolInfo()
         this.constant_pool[1].tag = 1
@@ -448,11 +612,12 @@ class BootClass extends Class {
         this.constant_pool[6].class_index = 4
         this.constant_pool[6].name_and_type_index = 5
 
-        var code = new Uint8Array(4)
+        var code = new Uint8Array(5)
         code[0] = 0x01
         code[1] = 0xb8
         code[2] = 0x00
         code[3] = 0x06
+        code[4] = 0xca
 
         this.methods['<clinit>()V'] = new ClassMethod()
         this.methods['<clinit>()V'].code = Buffer.from(code)
@@ -460,8 +625,11 @@ class BootClass extends Class {
 }
 
 export class JVMObjectRef {
-    instance: object = {}
+    instance: object
     
-    constructor(public clazz: string) {
+    constructor(public clazz: Class) {
+        if (this.clazz != null) {
+            this.instance = {}
+        }
     }
 }

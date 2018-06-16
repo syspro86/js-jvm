@@ -9,6 +9,7 @@ export class Class {
 export class ClassMethod {
     signature: string;
     public code: Buffer
+    code_native: Function
     max_locals: number;
     max_stack: number;
     exception_table: any[];

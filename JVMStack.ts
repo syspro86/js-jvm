@@ -4,6 +4,7 @@ export class JVMStackFrame {
     var_stack: JVMStack
     operand_stack: JVMStack
     code: Buffer = null
+    code_native: Function = null
     pc: number = 0
     sp: number = 0
     clazz: Class = null
